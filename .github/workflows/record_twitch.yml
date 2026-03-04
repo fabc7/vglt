@@ -31,21 +31,17 @@ jobs:
           echo "Iniciando grabación del canal: ${{ inputs.twitch_channel }}"
           
           # Configuración
-          MINUTOS_MAXIMOS=2  # <--- CAMBIA AQUÍ TU LÍMITE DE MINUTOS
+          MINUTOS_MAXIMOS=1
           FILENAME="audio_${{ inputs.twitch_channel }}_$(date +'%Y%m%d_%H%M%S').m4a"
           echo "FILENAME=$FILENAME" >> $GITHUB_ENV
           
-          # Calculamos los segundos para el comando timeout
-          SEGUNDOS=$((MINUTOS_MAXIMOS * 60))
+          # Ejecutamos con timeout. 
+          # El || [ $? -eq 124 ] sirve para decirle: 
+          # "Si el comando falla, revisa si fue por el código 124 (timeout). 
+          # Si fue 124, trátalo como éxito (true)"
+          timeout ${MINUTOS_MAXIMOS}m streamlink twitch.tv/${{ inputs.twitch_channel }} audio_only -o "$FILENAME" --twitch-disable-hosting --stream-segment-threads 1 || [ $? -eq 124 ]
           
-          # Streamlink con parámetros de máxima ligereza:
-          # --stream-segment-threads 1: Reduce consumo de CPU/red al mínimo.
-          # audio_only: Selecciona la mejor pista de audio disponible.
-          # timeout: Mata el proceso al llegar a los minutos indicados.
-          
-          timeout ${SEGUNDOS}s streamlink twitch.tv/${{ inputs.twitch_channel }} audio_only -o "$FILENAME" --twitch-disable-hosting --stream-segment-threads 1
-          
-          echo "Grabación finalizada o tiempo límite alcanzado."
+          echo "Grabación finalizada (o tiempo límite alcanzado)."
 
       - name: Enviar audio a Telegram
         env:
