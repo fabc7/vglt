@@ -46,7 +46,7 @@ jobs:
         run: |
           echo "Iniciando grabación del canal: ${{ inputs.twitch_channel }}"
           
-          MINUTOS_MAXIMOS=1
+          MINUTOS_MAXIMOS=300
           FILENAME="audio_${{ inputs.twitch_channel }}_$(date +'%Y%m%d_%H%M%S').m4a"
           echo "FILENAME=$FILENAME" >> $GITHUB_ENV
           
