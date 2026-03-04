@@ -28,19 +28,14 @@ jobs:
 
       - name: Obtener ID del Stream y configurar nombre
         run: |
-          # Obtenemos la metadata en formato JSON
-          # --json: Extrae la info sin grabar
-          # jq: Filtra el JSON para obtener solo el campo 'id'
           STREAM_ID=$(streamlink --json twitch.tv/${{ inputs.twitch_channel }} | jq -r '.metadata.id')
-          
-          # Si el stream está offline, el ID podría estar vacío o ser null
+
           if [ "$STREAM_ID" == "null" ] || [ -z "$STREAM_ID" ]; then
             echo "El canal no está en directo o no se pudo obtener el ID."
             # Opcional: Podrías forzar la salida aquí si no hay ID
             STREAM_ID="unknown_id"
           fi
-          
-          # Creamos un nombre de archivo que incluya el ID
+
           TIMESTAMP=$(date +'%Y%m%d_%H%M%S')
           FILENAME="audio_${{ inputs.twitch_channel }}_${STREAM_ID}_${TIMESTAMP}.m4a"
           
@@ -51,7 +46,6 @@ jobs:
         run: |
           echo "Iniciando grabación del canal: ${{ inputs.twitch_channel }}"
           
-          # Configuración
           MINUTOS_MAXIMOS=1
           FILENAME="audio_${{ inputs.twitch_channel }}_$(date +'%Y%m%d_%H%M%S').m4a"
           echo "FILENAME=$FILENAME" >> $GITHUB_ENV
@@ -68,11 +62,11 @@ jobs:
           CANAL_ID: ${{ secrets.CANAL_ID }}
         if: always() 
         run: |
-          # Obtenemos el título aquí mismo para estar seguros
-          STREAM_TITLE=$(streamlink --json twitch.tv/${{ inputs.twitch_channel }} | jq -r '.metadata.title')
+          METADATA=$(streamlink --json twitch.tv/${{ inputs.twitch_channel }})
+          STREAM_TITLE=$(echo $METADATA | jq -r '.metadata.title')
+          STREAM_ID=$(echo $METADATA | jq -r '.metadata.id')
           
-          # Si el título viene vacío, ponemos un texto por defecto
           if [ -z "$STREAM_TITLE" ] || [ "$STREAM_TITLE" == "null" ]; then STREAM_TITLE="Directo sin título"; fi
+          if [ -z "$STREAM_ID" ] || [ "$STREAM_ID" == "null" ]; then STREAM_ID="N/A"; fi
           
-          # PASAMOS LOS DOS ARGUMENTOS AL SCRIPT
-          python send_telegram.py "${{ env.FILENAME }}" "$STREAM_TITLE"
+          python send_telegram.py "${{ env.FILENAME }}" "$STREAM_TITLE" "$STREAM_ID"
