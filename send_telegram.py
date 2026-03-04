@@ -21,11 +21,12 @@ async def main():
     async with TelegramClient(StringSession(SESSION_STRING), API_ID, API_HASH) as client:
         print(f"Subiendo archivo a Telegram: {FILE_PATH}...")
         
-        # Enviamos el archivo con atributos de audio para que se pueda reproducir en la app
+        # Agregamos duration=0 (es un parámetro obligatorio para Telethon). 
+        # Telegram calculará la duración real al cargar el archivo.
         await client.send_file(
             CANAL_ID, 
             FILE_PATH,
-            attributes=[DocumentAttributeAudio(title=os.path.basename(FILE_PATH))]
+            attributes=[DocumentAttributeAudio(duration=0, title=os.path.basename(FILE_PATH))]
         )
         print(f"Archivo enviado correctamente: {FILE_PATH}")
 
