@@ -11,6 +11,7 @@ SESSION_STRING = os.environ["SESSION_STRING"]
 CANAL_ID = int(os.environ["CANAL_ID"])
 
 FILE_PATH = sys.argv[1]
+TITLE = sys.argv[2]
 
 async def main():
     if not os.path.exists(FILE_PATH) or os.path.getsize(FILE_PATH) == 0:
@@ -22,9 +23,11 @@ async def main():
         await client.send_file(
             CANAL_ID, 
             FILE_PATH,
+            caption=f"Stream: {TITLE}",
             attributes=[DocumentAttributeAudio(duration=0, title=os.path.basename(FILE_PATH))]
         )
         print(f"Archivo enviado correctamente: {FILE_PATH}")
 
 if __name__ == "__main__":
     asyncio.run(main())
+
