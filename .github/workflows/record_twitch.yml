@@ -26,12 +26,33 @@ jobs:
           python -m pip install --upgrade pip
           pip install streamlink telethon
 
+      - name: Obtener ID del Stream y configurar nombre
+        run: |
+          # Obtenemos la metadata en formato JSON
+          # --json: Extrae la info sin grabar
+          # jq: Filtra el JSON para obtener solo el campo 'id'
+          STREAM_ID=$(streamlink --json twitch.tv/${{ inputs.twitch_channel }} | jq -r '.metadata.id')
+          
+          # Si el stream está offline, el ID podría estar vacío o ser null
+          if [ "$STREAM_ID" == "null" ] || [ -z "$STREAM_ID" ]; then
+            echo "El canal no está en directo o no se pudo obtener el ID."
+            # Opcional: Podrías forzar la salida aquí si no hay ID
+            STREAM_ID="unknown_id"
+          fi
+          
+          # Creamos un nombre de archivo que incluya el ID
+          TIMESTAMP=$(date +'%Y%m%d_%H%M%S')
+          FILENAME="audio_${{ inputs.twitch_channel }}_${STREAM_ID}_${TIMESTAMP}.m4a"
+          
+          echo "FILENAME=$FILENAME" >> $GITHUB_ENV
+          echo "ID del stream detectado: $STREAM_ID"
+
       - name: Grabar audio con Streamlink
         run: |
           echo "Iniciando grabación del canal: ${{ inputs.twitch_channel }}"
           
           # Configuración
-          MINUTOS_MAXIMOS=2
+          MINUTOS_MAXIMOS=1
           FILENAME="audio_${{ inputs.twitch_channel }}_$(date +'%Y%m%d_%H%M%S').m4a"
           echo "FILENAME=$FILENAME" >> $GITHUB_ENV
           
@@ -49,4 +70,5 @@ jobs:
         # para intentar enviar lo que se haya grabado.
         if: always() 
         run: |
+          STREAM_TITLE=$(streamlink --json twitch.tv/${{ inputs.twitch_channel }} | jq -r '.metadata.title')
           python send_telegram.py "${{ env.FILENAME }}"
