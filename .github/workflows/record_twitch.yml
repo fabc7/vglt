@@ -27,21 +27,25 @@ jobs:
           pip install streamlink telethon
 
       - name: Grabar audio con Streamlink
-        # Usa 'audio_only' para no consumir recursos procesando video.
-        # El comando se quedará ejecutándose hasta que el streamer apague el directo.
         run: |
           echo "Iniciando grabación del canal: ${{ inputs.twitch_channel }}"
           
-          # Generamos un nombre de archivo dinámico con la fecha actual
+          # Configuración
+          MINUTOS_MAXIMOS=2  # <--- CAMBIA AQUÍ TU LÍMITE DE MINUTOS
           FILENAME="audio_${{ inputs.twitch_channel }}_$(date +'%Y%m%d_%H%M%S').m4a"
-          
-          # Guardamos el nombre del archivo en las variables de entorno para el siguiente paso
           echo "FILENAME=$FILENAME" >> $GITHUB_ENV
           
-          # Ejecutamos Streamlink (desactivando hostings para que no grabe otro canal al terminar)
-          streamlink twitch.tv/${{ inputs.twitch_channel }} audio_only -o "$FILENAME" --twitch-disable-hosting
+          # Calculamos los segundos para el comando timeout
+          SEGUNDOS=$((MINUTOS_MAXIMOS * 60))
           
-          echo "Grabación finalizada."
+          # Streamlink con parámetros de máxima ligereza:
+          # --stream-segment-threads 1: Reduce consumo de CPU/red al mínimo.
+          # audio_only: Selecciona la mejor pista de audio disponible.
+          # timeout: Mata el proceso al llegar a los minutos indicados.
+          
+          timeout ${SEGUNDOS}s streamlink twitch.tv/${{ inputs.twitch_channel }} audio_only -o "$FILENAME" --twitch-disable-hosting --stream-segment-threads 1
+          
+          echo "Grabación finalizada o tiempo límite alcanzado."
 
       - name: Enviar audio a Telegram
         env:
