@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       twitch_channel:
-        description: 'Nombre del canal de Twitch a grabar (ej: ibai)'
+        description: 'Nombre del canal de Twitch a grabar'
         required: true
         type: string
 
@@ -31,14 +31,10 @@ jobs:
           echo "Iniciando grabación del canal: ${{ inputs.twitch_channel }}"
           
           # Configuración
-          MINUTOS_MAXIMOS=1
+          MINUTOS_MAXIMOS=2
           FILENAME="audio_${{ inputs.twitch_channel }}_$(date +'%Y%m%d_%H%M%S').m4a"
           echo "FILENAME=$FILENAME" >> $GITHUB_ENV
           
-          # Ejecutamos con timeout. 
-          # El || [ $? -eq 124 ] sirve para decirle: 
-          # "Si el comando falla, revisa si fue por el código 124 (timeout). 
-          # Si fue 124, trátalo como éxito (true)"
           timeout ${MINUTOS_MAXIMOS}m streamlink twitch.tv/${{ inputs.twitch_channel }} audio_only -o "$FILENAME" --twitch-disable-hosting --stream-segment-threads 1 || [ $? -eq 124 ]
           
           echo "Grabación finalizada (o tiempo límite alcanzado)."
