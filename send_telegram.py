@@ -13,16 +13,12 @@ CANAL_ID = int(os.environ["CANAL_ID"])
 FILE_PATH = sys.argv[1]
 
 async def main():
-    # Validar que el archivo exista y no esté vacío
     if not os.path.exists(FILE_PATH) or os.path.getsize(FILE_PATH) == 0:
         print(f"Error: El archivo {FILE_PATH} no existe o está vacío.")
         sys.exit(1)
         
     async with TelegramClient(StringSession(SESSION_STRING), API_ID, API_HASH) as client:
         print(f"Subiendo archivo a Telegram: {FILE_PATH}...")
-        
-        # Agregamos duration=0 (es un parámetro obligatorio para Telethon). 
-        # Telegram calculará la duración real al cargar el archivo.
         await client.send_file(
             CANAL_ID, 
             FILE_PATH,
