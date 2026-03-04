@@ -14,24 +14,34 @@ FILE_PATH = sys.argv[1]
 TITLE = sys.argv[2] if len(sys.argv) > 2 else "Grabación de Twitch"
 STREAM_ID = sys.argv[3] if len(sys.argv) > 3 else "N/A"
 
+def get_file_size_mb(file_path):
+    size_bytes = os.path.getsize(file_path)
+    return round(size_bytes / (1024 * 1024), 2)
+
 async def main():
     if not os.path.exists(FILE_PATH) or os.path.getsize(FILE_PATH) == 0:
         print(f"Error: El archivo {FILE_PATH} no existe o está vacío.")
         sys.exit(1)
+    
+    file_size_mb = get_file_size_mb(FILE_PATH)
         
     async with TelegramClient(StringSession(SESSION_STRING), API_ID, API_HASH) as client:
-        print(f"Subiendo archivo a Telegram: {FILE_PATH}...")
+        print(f"Subiendo archivo a Telegram: {FILE_PATH} ({file_size_mb} MB)...")
         
-        caption_text = f"🎧 **{TITLE}**\n🆔 ID del Stream: `{STREAM_ID}`"
+        caption_text = (
+            f"🎧 **{TITLE}**\n"
+            f"🆔 ID de Emisión: `{STREAM_ID}`\n"
+            f"📦 Peso: `{file_size_mb} MB`"
+        )
         
         await client.send_file(
             CANAL_ID, 
             FILE_PATH,
             caption=caption_text,
-            parse_mode='md', # Esto permite usar negritas y formato código
+            parse_mode='md',
             attributes=[DocumentAttributeAudio(duration=0, title=TITLE)]
         )
-        print(f"Archivo enviado correctamente: {FILE_PATH}")
+        print(f"Archivo enviado correctamente.")
 
 if __name__ == "__main__":
     asyncio.run(main())
