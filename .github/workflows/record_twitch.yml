@@ -32,10 +32,15 @@ jobs:
       - name: Obtener ID del Stream y configurar nombre
         run: |
           STREAM_ID=$(streamlink --json twitch.tv/${{ inputs.twitch_channel }} | jq -r '.metadata.id')
+          STREAM_TITLE=$(streamlink --json twitch.tv/${{ inputs.twitch_channel }} | jq -r '.metadata.title')
           if [ "$STREAM_ID" == "null" ] || [ -z "$STREAM_ID" ]; then STREAM_ID="unknown_id"; fi
+          if [ "$STREAM_TITLE" == "null" ] || [ -z "$STREAM_TITLE" ]; then STREAM_TITLE="Directo sin título"; fi
           TIMESTAMP=$(date +'%Y%m%d_%H%M%S')
           FILENAME="audio_${{ inputs.twitch_channel }}_${STREAM_ID}_${TIMESTAMP}.m4a"
           echo "FILENAME=$FILENAME" >> $GITHUB_ENV
+          echo "STREAM_ID=$STREAM_ID" >> $GITHUB_ENV
+          echo "STREAM_TITLE=$STREAM_TITLE" >> $GITHUB_ENV
+          echo "Metadata obtenida - TÍTULO: $STREAM_TITLE | ID: $STREAM_ID | ARCHIVO: $FILENAME"
 
       - name: Grabar audio con Streamlink
         run: |
@@ -52,21 +57,8 @@ jobs:
           CANAL_ID: ${{ secrets.CANAL_ID }}
         if: always() 
         run: |
-          STREAM_TITLE="Directo sin título"
-          STREAM_ID="N/A"
-          
-          # Intentar obtener metadata, pero no detener si falla
-          if METADATA=$(streamlink --json twitch.tv/${{ inputs.twitch_channel }} 2>/dev/null); then
-            EXTRACTED_TITLE=$(echo "$METADATA" | jq -r '.metadata.title // empty' 2>/dev/null)
-            EXTRACTED_ID=$(echo "$METADATA" | jq -r '.metadata.id // empty' 2>/dev/null)
-            
-            if [ -n "$EXTRACTED_TITLE" ] && [ "$EXTRACTED_TITLE" != "null" ]; then
-              STREAM_TITLE="$EXTRACTED_TITLE"
-            fi
-            if [ -n "$EXTRACTED_ID" ] && [ "$EXTRACTED_ID" != "null" ]; then
-              STREAM_ID="$EXTRACTED_ID"
-            fi
-          fi
-          
-          echo "Enviando audio a Telegram: TÍTULO='$STREAM_TITLE' ID='$STREAM_ID'"
-          python send_telegram.py "${{ env.FILENAME }}" "$STREAM_TITLE" "$STREAM_ID"
+          echo "Enviando audio a Telegram..."
+          echo "TÍTULO: ${{ env.STREAM_TITLE }}"
+          echo "ID: ${{ env.STREAM_ID }}"
+          echo "ARCHIVO: ${{ env.FILENAME }}"
+          python send_telegram.py "${{ env.FILENAME }}" "${{ env.STREAM_TITLE }}" "${{ env.STREAM_ID }}"
