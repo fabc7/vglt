@@ -50,7 +50,7 @@ jobs:
           set -e
           set -x
           echo "Iniciando grabación del canal: ${{ inputs.twitch_channel }}"
-          MINUTOS_MAXIMOS=1
+          MINUTOS_MAXIMOS=300
           timeout ${MINUTOS_MAXIMOS}m streamlink twitch.tv/${{ inputs.twitch_channel }} audio_only -o "${{ env.FILENAME }}" --twitch-disable-hosting --stream-segment-threads 1 2> streamlink_grab_error.log || [ $? -eq 124 ]
           cat streamlink_grab_error.log
           echo "Grabación finalizada (o tiempo límite alcanzado)."
