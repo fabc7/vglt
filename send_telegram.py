@@ -19,29 +19,43 @@ def get_file_size_mb(file_path):
     return round(size_bytes / (1024 * 1024), 2)
 
 async def main():
-    if not os.path.exists(FILE_PATH) or os.path.getsize(FILE_PATH) == 0:
-        print(f"Error: El archivo {FILE_PATH} no existe o está vacío.")
-        sys.exit(1)
+    try:
+        if not os.path.exists(FILE_PATH):
+            print(f"Error: El archivo {FILE_PATH} no existe.")
+            sys.exit(1)
+        
+        file_size = os.path.getsize(FILE_PATH)
+        if file_size == 0:
+            print(f"Error: El archivo {FILE_PATH} está vacío.")
+            sys.exit(1)
+        
+        file_size_mb = get_file_size_mb(FILE_PATH)
+        
+        async with TelegramClient(StringSession(SESSION_STRING), API_ID, API_HASH) as client:
+            print(f"Subiendo archivo a Telegram: {FILE_PATH} ({file_size_mb} MB)...")
+            
+            caption_text = (
+                f"🎧 **{TITLE}**\n"
+                f"🆔 ID de Emisión: `{STREAM_ID}`\n"
+                f"📦 Peso: `{file_size_mb} MB`"
+            )
+            
+            try:
+                await client.send_file(
+                    CANAL_ID, 
+                    FILE_PATH,
+                    caption=caption_text,
+                    parse_mode='md',
+                    attributes=[DocumentAttributeAudio(duration=0, title=TITLE)]
+                )
+                print(f"✓ Archivo enviado correctamente a Telegram.")
+            except Exception as e:
+                print(f"Error al enviar archivo a Telegram: {e}")
+                sys.exit(1)
     
-    file_size_mb = get_file_size_mb(FILE_PATH)
-        
-    async with TelegramClient(StringSession(SESSION_STRING), API_ID, API_HASH) as client:
-        print(f"Subiendo archivo a Telegram: {FILE_PATH} ({file_size_mb} MB)...")
-        
-        caption_text = (
-            f"🎧 **{TITLE}**\n"
-            f"🆔 ID de Emisión: `{STREAM_ID}`\n"
-            f"📦 Peso: `{file_size_mb} MB`"
-        )
-        
-        await client.send_file(
-            CANAL_ID, 
-            FILE_PATH,
-            caption=caption_text,
-            parse_mode='md',
-            attributes=[DocumentAttributeAudio(duration=0, title=TITLE)]
-        )
-        print(f"Archivo enviado correctamente.")
+    except Exception as e:
+        print(f"Error inesperado: {e}")
+        sys.exit(1)
 
 if __name__ == "__main__":
     asyncio.run(main())
