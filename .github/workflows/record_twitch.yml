@@ -31,28 +31,17 @@ jobs:
 
       - name: Obtener ID del Stream y configurar nombre
         run: |
-          set -e
-          set -x
-          STREAM_ID=$(streamlink --json twitch.tv/${{ inputs.twitch_channel }} 2> streamlink_error.log | jq -r '.metadata.id')
-          cat streamlink_error.log
-          if [ "$STREAM_ID" == "null" ] || [ -z "$STREAM_ID" ]; then
-            echo "STREAM_ID no encontrado, probablemente canal offline o error en streamlink."
-            exit 1
-          fi
-          echo "STREAM_ID es: $STREAM_ID"
+          STREAM_ID=$(streamlink --json twitch.tv/${{ inputs.twitch_channel }} | jq -r '.metadata.id')
+          if [ "$STREAM_ID" == "null" ] || [ -z "$STREAM_ID" ]; then STREAM_ID="unknown_id"; fi
           TIMESTAMP=$(date +'%Y%m%d_%H%M%S')
           FILENAME="audio_${{ inputs.twitch_channel }}_${STREAM_ID}_${TIMESTAMP}.m4a"
           echo "FILENAME=$FILENAME" >> $GITHUB_ENV
-          echo "FILENAME es: $FILENAME"
 
       - name: Grabar audio con Streamlink
         run: |
-          set -e
-          set -x
           echo "Iniciando grabación del canal: ${{ inputs.twitch_channel }}"
           MINUTOS_MAXIMOS=300
-          timeout ${MINUTOS_MAXIMOS}m streamlink twitch.tv/${{ inputs.twitch_channel }} audio_only -o "${{ env.FILENAME }}" --twitch-disable-hosting --stream-segment-threads 1 2> streamlink_grab_error.log || [ $? -eq 124 ]
-          cat streamlink_grab_error.log
+          timeout ${MINUTOS_MAXIMOS}m streamlink twitch.tv/${{ inputs.twitch_channel }} audio_only -o "${{ env.FILENAME }}" --twitch-disable-hosting --stream-segment-threads 1 || [ $? -eq 124 ]
           echo "Grabación finalizada (o tiempo límite alcanzado)."
 
       - name: Enviar audio a Telegram
@@ -61,16 +50,23 @@ jobs:
           API_HASH: ${{ secrets.API_HASH }}
           SESSION_STRING: ${{ secrets.SESSION_STRING }}
           CANAL_ID: ${{ secrets.CANAL_ID }}
-        if: always()
+        if: always() 
         run: |
-          set -e
-          set -x
-          METADATA=$(streamlink --json twitch.tv/${{ inputs.twitch_channel }} 2> telegram_streamlink_error.log)
-          cat telegram_streamlink_error.log
-          STREAM_TITLE=$(echo $METADATA | jq -r '.metadata.title')
-          STREAM_ID=$(echo $METADATA | jq -r '.metadata.id')
-          if [ -z "$STREAM_TITLE" ] || [ "$STREAM_TITLE" == "null" ]; then STREAM_TITLE="Directo sin título"; fi
-          if [ -z "$STREAM_ID" ] || [ "$STREAM_ID" == "null" ]; then STREAM_ID="N/A"; fi
-          echo "STREAM_TITLE es: $STREAM_TITLE"
-          echo "STREAM_ID es: $STREAM_ID"
+          STREAM_TITLE="Directo sin título"
+          STREAM_ID="N/A"
+          
+          # Intentar obtener metadata, pero no detener si falla
+          if METADATA=$(streamlink --json twitch.tv/${{ inputs.twitch_channel }} 2>/dev/null); then
+            EXTRACTED_TITLE=$(echo "$METADATA" | jq -r '.metadata.title // empty' 2>/dev/null)
+            EXTRACTED_ID=$(echo "$METADATA" | jq -r '.metadata.id // empty' 2>/dev/null)
+            
+            if [ -n "$EXTRACTED_TITLE" ] && [ "$EXTRACTED_TITLE" != "null" ]; then
+              STREAM_TITLE="$EXTRACTED_TITLE"
+            fi
+            if [ -n "$EXTRACTED_ID" ] && [ "$EXTRACTED_ID" != "null" ]; then
+              STREAM_ID="$EXTRACTED_ID"
+            fi
+          fi
+          
+          echo "Enviando audio a Telegram: TÍTULO='$STREAM_TITLE' ID='$STREAM_ID'"
           python send_telegram.py "${{ env.FILENAME }}" "$STREAM_TITLE" "$STREAM_ID"
