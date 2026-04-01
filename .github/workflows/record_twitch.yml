@@ -24,6 +24,9 @@ jobs:
       - name: Instalar jq
         run: sudo apt-get update && sudo apt-get install -y jq
 
+      - name: Instalar ffmpeg
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+
       - name: Instalar dependencias
         run: |
           python -m pip install --upgrade pip
@@ -45,9 +48,24 @@ jobs:
       - name: Grabar audio con Streamlink
         run: |
           echo "Iniciando grabación del canal: ${{ inputs.twitch_channel }}"
-          MINUTOS_MAXIMOS=300
+          MINUTOS_MAXIMOS=3
           timeout ${MINUTOS_MAXIMOS}m streamlink twitch.tv/${{ inputs.twitch_channel }} audio_only -o "${{ env.FILENAME }}" --twitch-disable-hosting --stream-segment-threads 1 || [ $? -eq 124 ]
           echo "Grabación finalizada (o tiempo límite alcanzado)."
+
+      - name: Comprimir audio
+        run: |
+          echo "Comprimiendo audio..."
+          OUTPUT_FILE="compressed_${{ env.FILENAME }}"
+          
+          ffmpeg -i "${{ env.FILENAME }}" \
+            -c:a aac \
+            -b:a 48k \
+            -vn \
+            -ac 1 \
+            -threads 0 \
+            "$OUTPUT_FILE"
+      
+          echo "COMPRESSED_FILE=$OUTPUT_FILE" >> $GITHUB_ENV
 
       - name: Enviar audio a Telegram
         env:
@@ -61,4 +79,4 @@ jobs:
           echo "TÍTULO: ${{ env.STREAM_TITLE }}"
           echo "ID: ${{ env.STREAM_ID }}"
           echo "ARCHIVO: ${{ env.FILENAME }}"
-          python send_telegram.py "${{ env.FILENAME }}" "${{ env.STREAM_TITLE }}" "${{ env.STREAM_ID }}"
+          python send_telegram.py "${{ env.COMPRESSED_FILE }}" "${{ env.STREAM_TITLE }}" "${{ env.STREAM_ID }}"
