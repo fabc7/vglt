@@ -48,7 +48,7 @@ jobs:
       - name: Grabar audio con Streamlink
         run: |
           echo "Iniciando grabación del canal: ${{ inputs.twitch_channel }}"
-          MINUTOS_MAXIMOS=3
+          MINUTOS_MAXIMOS=330
           timeout ${MINUTOS_MAXIMOS}m streamlink twitch.tv/${{ inputs.twitch_channel }} audio_only -o "${{ env.FILENAME }}" --twitch-disable-hosting --stream-segment-threads 1 || [ $? -eq 124 ]
           echo "Grabación finalizada (o tiempo límite alcanzado)."
 
@@ -59,7 +59,7 @@ jobs:
           
           ffmpeg -i "${{ env.FILENAME }}" \
             -c:a aac \
-            -b:a 48k \
+            -b:a 64k \
             -vn \
             -ac 1 \
             -threads 0 \
