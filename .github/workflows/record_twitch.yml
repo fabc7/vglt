@@ -1,6 +1,5 @@
 name: Grabar Audio de Twitch
 
-# 🔥 FIX MÍNIMO (esto soluciona el 403)
 permissions:
   actions: write
   contents: read
@@ -59,7 +58,7 @@ jobs:
         id: record_status
         run: |
           echo "Iniciando grabación del canal: ${{ inputs.twitch_channel }}"
-          MINUTOS_MAXIMOS=1
+          MINUTOS_MAXIMOS=330
 
           set +e
           timeout ${MINUTOS_MAXIMOS}m streamlink twitch.tv/${{ inputs.twitch_channel }} audio_only \
