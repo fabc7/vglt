@@ -46,11 +46,35 @@ jobs:
           echo "Metadata obtenida - TÍTULO: $STREAM_TITLE | ID: $STREAM_ID | ARCHIVO: $FILENAME"
 
       - name: Grabar audio con Streamlink
+        id: record_status
         run: |
           echo "Iniciando grabación del canal: ${{ inputs.twitch_channel }}"
-          MINUTOS_MAXIMOS=330
-          timeout ${MINUTOS_MAXIMOS}m streamlink twitch.tv/${{ inputs.twitch_channel }} audio_only -o "${{ env.FILENAME }}" --twitch-disable-hosting --stream-segment-threads 1 || [ $? -eq 124 ]
-          echo "Grabación finalizada (o tiempo límite alcanzado)."
+          MINUTOS_MAXIMOS=1
+          
+          timeout ${MINUTOS_MAXIMOS}m streamlink twitch.tv/${{ inputs.twitch_channel }} audio_only -o "${{ env.FILENAME }}" --twitch-disable-hosting --stream-segment-threads 1
+          EXITCODE=$?
+          
+          if [ $EXITCODE -eq 124 ]; then
+            echo "timeout_reached=true" >> $GITHUB_OUTPUT
+            echo "✓ Tiempo límite alcanzado (330 min). El stream sigue en vivo."
+          elif [ $EXITCODE -eq 0 ]; then
+            echo "timeout_reached=false" >> $GITHUB_OUTPUT
+            echo "✓ Grabación finalizó naturalmente. El stream terminó."
+          else
+            echo "timeout_reached=false" >> $GITHUB_OUTPUT
+            echo "⚠ Error durante la grabación (código: $EXITCODE)"
+            exit $EXITCODE
+          fi
+
+      - name: Verificar archivo de grabación
+        run: |
+          if [ ! -f "${{ env.FILENAME }}" ]; then
+            echo "❌ Error: El archivo no se creó"
+            exit 1
+          fi
+          
+          FILE_SIZE=$(du -h "${{ env.FILENAME }}" | cut -f1)
+          echo "✓ Archivo creado: ${{ env.FILENAME }} (${FILE_SIZE})"
 
       - name: Comprimir audio
         run: |
@@ -64,7 +88,12 @@ jobs:
             -ac 1 \
             -threads 0 \
             "$OUTPUT_FILE"
-      
+          
+          if [ ! -f "$OUTPUT_FILE" ]; then
+            echo "❌ Error: Compresión fallida"
+            exit 1
+          fi
+          
           echo "COMPRESSED_FILE=$OUTPUT_FILE" >> $GITHUB_ENV
 
       - name: Enviar audio a Telegram
@@ -78,5 +107,28 @@ jobs:
           echo "Enviando audio a Telegram..."
           echo "TÍTULO: ${{ env.STREAM_TITLE }}"
           echo "ID: ${{ env.STREAM_ID }}"
-          echo "ARCHIVO: ${{ env.FILENAME }}"
           python send_telegram.py "${{ env.COMPRESSED_FILE }}" "${{ env.STREAM_TITLE }}" "${{ env.STREAM_ID }}"
+
+      - name: Limpiar archivos temporales
+        if: always()
+        run: |
+          rm -f "${{ env.FILENAME }}" "${{ env.COMPRESSED_FILE }}"
+          echo "✓ Archivos temporales eliminados"
+
+      - name: Disparar nueva grabación si el stream sigue en vivo
+        if: steps.record_status.outputs.timeout_reached == 'true'
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            console.log('El timeout se alcanzó. Disparando nueva grabación...');
+            github.rest.actions.createWorkflowDispatch({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              workflow_id: 'record_twitch.yml',
+              ref: context.ref,
+              inputs: {
+                twitch_channel: '${{ inputs.twitch_channel }}'
+              }
+            });
+            console.log('✓ Nueva ejecución disparada automáticamente');
