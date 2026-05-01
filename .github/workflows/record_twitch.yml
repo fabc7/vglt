@@ -21,107 +21,147 @@ jobs:
         with:
           python-version: '3.10'
 
-      - name: Instalar jq
-        run: sudo apt-get update && sudo apt-get install -y jq
+      - name: Instalar dependencias del sistema
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y jq ffmpeg
 
-      - name: Instalar ffmpeg
-        run: sudo apt-get update && sudo apt-get install -y ffmpeg
-
-      - name: Instalar dependencias
+      - name: Instalar dependencias Python
         run: |
           python -m pip install --upgrade pip
           pip install streamlink telethon
 
-      - name: Obtener ID del Stream y configurar nombre
+      # -----------------------------
+      # METADATA (ROBUSTA)
+      # -----------------------------
+      - name: Obtener metadata del stream
         run: |
-          STREAM_ID=$(streamlink --json twitch.tv/${{ inputs.twitch_channel }} | jq -r '.metadata.id')
-          STREAM_TITLE=$(streamlink --json twitch.tv/${{ inputs.twitch_channel }} | jq -r '.metadata.title')
-          if [ "$STREAM_ID" == "null" ] || [ -z "$STREAM_ID" ]; then STREAM_ID="unknown_id"; fi
-          if [ "$STREAM_TITLE" == "null" ] || [ -z "$STREAM_TITLE" ]; then STREAM_TITLE="Directo sin título"; fi
+          set +e
+          JSON=$(streamlink --json twitch.tv/${{ inputs.twitch_channel }} 2>/dev/null)
+          set -e
+
+          STREAM_ID=$(echo "$JSON" | jq -r '.metadata.id // empty')
+          STREAM_TITLE=$(echo "$JSON" | jq -r '.metadata.title // empty')
+
+          if [ -z "$STREAM_ID" ]; then STREAM_ID="unknown_id"; fi
+          if [ -z "$STREAM_TITLE" ]; then STREAM_TITLE="Directo sin título"; fi
+
           TIMESTAMP=$(date +'%Y%m%d_%H%M%S')
           FILENAME="audio_${{ inputs.twitch_channel }}_${STREAM_ID}_${TIMESTAMP}.m4a"
+
           echo "FILENAME=$FILENAME" >> $GITHUB_ENV
           echo "STREAM_ID=$STREAM_ID" >> $GITHUB_ENV
           echo "STREAM_TITLE=$STREAM_TITLE" >> $GITHUB_ENV
-          echo "Metadata obtenida - TÍTULO: $STREAM_TITLE | ID: $STREAM_ID | ARCHIVO: $FILENAME"
 
+          echo "✓ Metadata - TÍTULO: $STREAM_TITLE | ID: $STREAM_ID"
+
+      # -----------------------------
+      # GRABACIÓN (FIX TIMEOUT)
+      # -----------------------------
       - name: Grabar audio con Streamlink
         id: record_status
         run: |
           echo "Iniciando grabación del canal: ${{ inputs.twitch_channel }}"
-          MINUTOS_MAXIMOS=1
-          
-          timeout ${MINUTOS_MAXIMOS}m streamlink twitch.tv/${{ inputs.twitch_channel }} audio_only -o "${{ env.FILENAME }}" --twitch-disable-hosting --stream-segment-threads 1
+          MINUTOS_MAXIMOS=330
+
+          set +e
+          timeout ${MINUTOS_MAXIMOS}m streamlink twitch.tv/${{ inputs.twitch_channel }} audio_only \
+            -o "${{ env.FILENAME }}" \
+            --stream-segment-threads 1
           EXITCODE=$?
-          
+          set -e
+
+          echo "Exit code: $EXITCODE"
+
           if [ $EXITCODE -eq 124 ]; then
             echo "timeout_reached=true" >> $GITHUB_OUTPUT
-            echo "✓ Tiempo límite alcanzado (330 min). El stream sigue en vivo."
+            echo "✓ Timeout alcanzado (stream sigue activo)"
           elif [ $EXITCODE -eq 0 ]; then
             echo "timeout_reached=false" >> $GITHUB_OUTPUT
-            echo "✓ Grabación finalizó naturalmente. El stream terminó."
+            echo "✓ Stream finalizado normalmente"
           else
             echo "timeout_reached=false" >> $GITHUB_OUTPUT
-            echo "⚠ Error durante la grabación (código: $EXITCODE)"
-            exit $EXITCODE
+            echo "⚠ Error durante grabación ($EXITCODE)"
           fi
 
+      # -----------------------------
+      # VALIDAR ARCHIVO
+      # -----------------------------
       - name: Verificar archivo de grabación
+        id: check_file
         run: |
           if [ ! -f "${{ env.FILENAME }}" ]; then
-            echo "❌ Error: El archivo no se creó"
-            exit 1
+            echo "file_exists=false" >> $GITHUB_OUTPUT
+            echo "❌ Archivo no creado"
+            exit 0
           fi
-          
+
           FILE_SIZE=$(du -h "${{ env.FILENAME }}" | cut -f1)
+          echo "file_exists=true" >> $GITHUB_OUTPUT
           echo "✓ Archivo creado: ${{ env.FILENAME }} (${FILE_SIZE})"
 
+      # -----------------------------
+      # COMPRESIÓN
+      # -----------------------------
       - name: Comprimir audio
+        if: steps.check_file.outputs.file_exists == 'true'
         run: |
           echo "Comprimiendo audio..."
+
           OUTPUT_FILE="compressed_${{ env.FILENAME }}"
-          
-          ffmpeg -i "${{ env.FILENAME }}" \
+
+          ffmpeg -y -i "${{ env.FILENAME }}" \
             -c:a aac \
             -b:a 64k \
-            -vn \
             -ac 1 \
-            -threads 0 \
             "$OUTPUT_FILE"
-          
+
           if [ ! -f "$OUTPUT_FILE" ]; then
-            echo "❌ Error: Compresión fallida"
+            echo "❌ Error en compresión"
             exit 1
           fi
-          
-          echo "COMPRESSED_FILE=$OUTPUT_FILE" >> $GITHUB_ENV
 
+          echo "COMPRESSED_FILE=$OUTPUT_FILE" >> $GITHUB_ENV
+          echo "✓ Archivo comprimido listo: $OUTPUT_FILE"
+
+      # -----------------------------
+      # ENVÍO A TELEGRAM (SEGURO)
+      # -----------------------------
       - name: Enviar audio a Telegram
+        if: always()
         env:
           API_ID: ${{ secrets.API_ID }}
           API_HASH: ${{ secrets.API_HASH }}
           SESSION_STRING: ${{ secrets.SESSION_STRING }}
           CANAL_ID: ${{ secrets.CANAL_ID }}
-        if: always() 
         run: |
-          echo "Enviando audio a Telegram..."
-          echo "TÍTULO: ${{ env.STREAM_TITLE }}"
-          echo "ID: ${{ env.STREAM_ID }}"
+          if [ -z "${{ env.COMPRESSED_FILE }}" ] || [ ! -f "${{ env.COMPRESSED_FILE }}" ]; then
+            echo "⚠ No hay archivo válido para enviar"
+            exit 0
+          fi
+
+          echo "Enviando audio..."
           python send_telegram.py "${{ env.COMPRESSED_FILE }}" "${{ env.STREAM_TITLE }}" "${{ env.STREAM_ID }}"
 
+      # -----------------------------
+      # LIMPIEZA
+      # -----------------------------
       - name: Limpiar archivos temporales
         if: always()
         run: |
           rm -f "${{ env.FILENAME }}" "${{ env.COMPRESSED_FILE }}"
-          echo "✓ Archivos temporales eliminados"
+          echo "✓ Limpieza completa"
 
-      - name: Disparar nueva grabación si el stream sigue en vivo
+      # -----------------------------
+      # REINTENTO AUTOMÁTICO
+      # -----------------------------
+      - name: Re-disparar si sigue en vivo
         if: steps.record_status.outputs.timeout_reached == 'true'
         uses: actions/github-script@v7
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
-            console.log('El timeout se alcanzó. Disparando nueva grabación...');
+            console.log('Relanzando workflow...');
             github.rest.actions.createWorkflowDispatch({
               owner: context.repo.owner,
               repo: context.repo.repo,
@@ -131,4 +171,3 @@ jobs:
                 twitch_channel: '${{ inputs.twitch_channel }}'
               }
             });
-            console.log('✓ Nueva ejecución disparada automáticamente');
