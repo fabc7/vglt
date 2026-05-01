@@ -1,5 +1,10 @@
 name: Grabar Audio de Twitch
 
+# 🔥 FIX MÍNIMO (esto soluciona el 403)
+permissions:
+  actions: write
+  contents: read
+
 on:
   workflow_dispatch:
     inputs:
@@ -31,9 +36,6 @@ jobs:
           python -m pip install --upgrade pip
           pip install streamlink telethon
 
-      # -----------------------------
-      # METADATA (ROBUSTA)
-      # -----------------------------
       - name: Obtener metadata del stream
         run: |
           set +e
@@ -53,16 +55,11 @@ jobs:
           echo "STREAM_ID=$STREAM_ID" >> $GITHUB_ENV
           echo "STREAM_TITLE=$STREAM_TITLE" >> $GITHUB_ENV
 
-          echo "✓ Metadata - TÍTULO: $STREAM_TITLE | ID: $STREAM_ID"
-
-      # -----------------------------
-      # GRABACIÓN (FIX TIMEOUT)
-      # -----------------------------
       - name: Grabar audio con Streamlink
         id: record_status
         run: |
           echo "Iniciando grabación del canal: ${{ inputs.twitch_channel }}"
-          MINUTOS_MAXIMOS=1
+          MINUTOS_MAXIMOS=330
 
           set +e
           timeout ${MINUTOS_MAXIMOS}m streamlink twitch.tv/${{ inputs.twitch_channel }} audio_only \
@@ -71,43 +68,25 @@ jobs:
           EXITCODE=$?
           set -e
 
-          echo "Exit code: $EXITCODE"
-
           if [ $EXITCODE -eq 124 ]; then
             echo "timeout_reached=true" >> $GITHUB_OUTPUT
-            echo "✓ Timeout alcanzado (stream sigue activo)"
-          elif [ $EXITCODE -eq 0 ]; then
-            echo "timeout_reached=false" >> $GITHUB_OUTPUT
-            echo "✓ Stream finalizado normalmente"
           else
             echo "timeout_reached=false" >> $GITHUB_OUTPUT
-            echo "⚠ Error durante grabación ($EXITCODE)"
           fi
 
-      # -----------------------------
-      # VALIDAR ARCHIVO
-      # -----------------------------
       - name: Verificar archivo de grabación
         id: check_file
         run: |
           if [ ! -f "${{ env.FILENAME }}" ]; then
             echo "file_exists=false" >> $GITHUB_OUTPUT
-            echo "❌ Archivo no creado"
             exit 0
           fi
 
-          FILE_SIZE=$(du -h "${{ env.FILENAME }}" | cut -f1)
           echo "file_exists=true" >> $GITHUB_OUTPUT
-          echo "✓ Archivo creado: ${{ env.FILENAME }} (${FILE_SIZE})"
 
-      # -----------------------------
-      # COMPRESIÓN
-      # -----------------------------
       - name: Comprimir audio
         if: steps.check_file.outputs.file_exists == 'true'
         run: |
-          echo "Comprimiendo audio..."
-
           OUTPUT_FILE="compressed_${{ env.FILENAME }}"
 
           ffmpeg -y -i "${{ env.FILENAME }}" \
@@ -116,17 +95,8 @@ jobs:
             -ac 1 \
             "$OUTPUT_FILE"
 
-          if [ ! -f "$OUTPUT_FILE" ]; then
-            echo "❌ Error en compresión"
-            exit 1
-          fi
-
           echo "COMPRESSED_FILE=$OUTPUT_FILE" >> $GITHUB_ENV
-          echo "✓ Archivo comprimido listo: $OUTPUT_FILE"
 
-      # -----------------------------
-      # ENVÍO A TELEGRAM (SEGURO)
-      # -----------------------------
       - name: Enviar audio a Telegram
         if: always()
         env:
@@ -136,32 +106,23 @@ jobs:
           CANAL_ID: ${{ secrets.CANAL_ID }}
         run: |
           if [ -z "${{ env.COMPRESSED_FILE }}" ] || [ ! -f "${{ env.COMPRESSED_FILE }}" ]; then
-            echo "⚠ No hay archivo válido para enviar"
+            echo "No hay archivo para enviar"
             exit 0
           fi
 
-          echo "Enviando audio..."
           python send_telegram.py "${{ env.COMPRESSED_FILE }}" "${{ env.STREAM_TITLE }}" "${{ env.STREAM_ID }}"
 
-      # -----------------------------
-      # LIMPIEZA
-      # -----------------------------
       - name: Limpiar archivos temporales
         if: always()
         run: |
           rm -f "${{ env.FILENAME }}" "${{ env.COMPRESSED_FILE }}"
-          echo "✓ Limpieza completa"
 
-      # -----------------------------
-      # REINTENTO AUTOMÁTICO
-      # -----------------------------
       - name: Re-disparar si sigue en vivo
         if: steps.record_status.outputs.timeout_reached == 'true'
         uses: actions/github-script@v7
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
-            console.log('Relanzando workflow...');
             github.rest.actions.createWorkflowDispatch({
               owner: context.repo.owner,
               repo: context.repo.repo,
