@@ -58,12 +58,14 @@ jobs:
         id: record_status
         run: |
           echo "Iniciando grabación del canal: ${{ inputs.twitch_channel }}"
-          MINUTOS_MAXIMOS=330
+          MINUTOS_MAXIMOS=1
 
           set +e
           timeout ${MINUTOS_MAXIMOS}m streamlink twitch.tv/${{ inputs.twitch_channel }} audio_only \
             -o "${{ env.FILENAME }}" \
-            --stream-segment-threads 1
+            --retry-streams 30 \
+            --retry-max 10 \
+            --stream-segment-timeout 30
           EXITCODE=$?
           set -e
 
