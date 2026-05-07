@@ -65,7 +65,9 @@ jobs:
             -o "${{ env.FILENAME }}" \
             --retry-streams 30 \
             --retry-max 10 \
-            --stream-segment-timeout 30
+            --stream-segment-timeout 60 \
+            --stream-segment-attempts 5 \
+            --hls-live-restart
           EXITCODE=$?
           set -e
 
